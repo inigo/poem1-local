@@ -18,6 +18,9 @@ from llm import MODEL, build_prompt, call_llm
 from parser import ParseError, parse_llm_response
 
 
+BATCH_SIZE = 20
+
+
 def time_range(start: str, end: str) -> list[str]:
     """Return list of "HH:MM" strings from start up to and including end."""
     fmt = "%H:%M"
@@ -28,6 +31,10 @@ def time_range(start: str, end: str) -> list[str]:
         times.append(t.strftime(fmt))
         t += timedelta(minutes=1)
     return times
+
+
+def batched(times: list[str], size: int) -> list[list[str]]:
+    return [times[i:i + size] for i in range(0, len(times), size)]
 
 
 def main() -> None:
@@ -49,52 +56,64 @@ def main() -> None:
 
     tags: list[str] = args.tags if args.tags is not None else [args.weather.split()[0].lower()]
 
-    expected_times = time_range(args.start, args.end)
-    if not expected_times:
+    all_times = time_range(args.start, args.end)
+    if not all_times:
         print(f"Error: --end {args.end!r} is before --start {args.start!r}", file=sys.stderr)
         sys.exit(1)
 
-    count = len(expected_times)
-    prompt = build_prompt(
-        start_time=args.start,
-        end_time=args.end,
-        weather=args.weather,
-        count=count,
-    )
+    batches = batched(all_times, BATCH_SIZE)
+    total = len(all_times)
+    print(f"Generating {total} poems ({args.start}–{args.end}) in {len(batches)} batch(es) "
+          f"of up to {BATCH_SIZE}, weather: {args.weather}")
+    print(f"Tags: {tags}  Model: {args.model}")
 
-    print(f"Calling {args.model} for {count} poems ({args.start}–{args.end}), weather: {args.weather}")
-    print(f"Tags: {tags}")
+    if not args.dry_run:
+        init_db()
 
-    if args.dry_run:
-        print("\n--- Prompt ---")
-        print(prompt)
+    all_poems = []
+    for i, batch in enumerate(batches, 1):
+        batch_start, batch_end = batch[0], batch[-1]
+        count = len(batch)
+        prompt = build_prompt(
+            start_time=batch_start,
+            end_time=batch_end,
+            weather=args.weather,
+            count=count,
+        )
 
-    raw = call_llm(prompt, model=args.model)
+        print(f"\n[Batch {i}/{len(batches)}] {batch_start}–{batch_end} ({count} poems)")
 
-    if args.dry_run:
-        print("\n--- Raw LLM response ---")
-        print(raw)
+        if args.dry_run:
+            print("--- Prompt ---")
+            print(prompt)
 
-    try:
-        poems = parse_llm_response(raw, expected_times=expected_times)
-    except ParseError as e:
-        print(f"\nParse error: {e}", file=sys.stderr)
-        print("\n--- Raw LLM response ---", file=sys.stderr)
-        print(raw, file=sys.stderr)
-        sys.exit(1)
+        raw = call_llm(prompt, model=args.model)
 
-    if args.dry_run:
-        print(f"\n--- Parsed {len(poems)} poems ---")
-        for p in poems:
-            print(f"  {p.time_str}: {p.poem}")
-        return
+        if args.dry_run:
+            print("--- Raw LLM response ---")
+            print(raw)
 
-    init_db()
-    for p in poems:
-        poem_id = insert_poem(p.time_str, p.poem, tags)
-        print(f"  Stored [{poem_id}] {p.time_str}: {p.poem[:60]}")
+        try:
+            poems = parse_llm_response(raw, expected_times=batch)
+        except ParseError as e:
+            print(f"\nParse error in batch {i}: {e}", file=sys.stderr)
+            print("--- Raw LLM response ---", file=sys.stderr)
+            print(raw, file=sys.stderr)
+            sys.exit(1)
 
-    print(f"\nDone. {len(poems)} poems stored in {DB_PATH}")
+        if args.dry_run:
+            print(f"--- Parsed {len(poems)} poems ---")
+            for p in poems:
+                print(f"  {p.time_str}: {p.poem}")
+        else:
+            for p in poems:
+                poem_id = insert_poem(p.time_str, p.poem, tags)
+                print(f"  Stored [{poem_id}] {p.time_str}: {p.poem[:60]}")
+
+        all_poems.extend(poems)
+
+    if not args.dry_run:
+        print(f"\nDone. {len(all_poems)} poems stored in {DB_PATH}")
 
 
 if __name__ == "__main__":
