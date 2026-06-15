@@ -1,0 +1,3 @@
+[poem_server]
+token = your_poem_town_api_token_here
+screen_id = your_screen_id_here
