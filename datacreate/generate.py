@@ -19,6 +19,7 @@ from parser import ParseError, parse_llm_response
 
 
 BATCH_SIZE = 20
+MAX_ATTEMPTS = 3
 
 
 def time_range(start: str, end: str) -> list[str]:
@@ -87,18 +88,27 @@ def main() -> None:
             print("--- Prompt ---")
             print(prompt)
 
-        raw = call_llm(prompt, model=args.model)
+        poems = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                print(f"  Retrying (attempt {attempt}/{MAX_ATTEMPTS})...")
 
-        if args.dry_run:
-            print("--- Raw LLM response ---")
-            print(raw)
+            raw = call_llm(prompt, model=args.model)
 
-        try:
-            poems = parse_llm_response(raw, expected_times=batch)
-        except ParseError as e:
-            print(f"\nParse error in batch {i}: {e}", file=sys.stderr)
-            print("--- Raw LLM response ---", file=sys.stderr)
-            print(raw, file=sys.stderr)
+            if args.dry_run:
+                print("--- Raw LLM response ---")
+                print(raw)
+
+            try:
+                poems = parse_llm_response(raw, expected_times=batch)
+                break
+            except ParseError as e:
+                print(f"  Parse error (attempt {attempt}/{MAX_ATTEMPTS}): {e}", file=sys.stderr)
+                print("--- Raw LLM response ---", file=sys.stderr)
+                print(raw, file=sys.stderr)
+
+        if poems is None:
+            print(f"\nBatch {i} failed after {MAX_ATTEMPTS} attempts. Aborting.", file=sys.stderr)
             sys.exit(1)
 
         if args.dry_run:
@@ -108,7 +118,7 @@ def main() -> None:
         else:
             for p in poems:
                 poem_id = insert_poem(p.time_str, p.poem, tags)
-                print(f"  Stored [{poem_id}] {p.time_str}: {p.poem[:60]}")
+                print(f"  Stored [{poem_id}] {p.time_str}: {p.poem}")
 
         all_poems.extend(poems)
 

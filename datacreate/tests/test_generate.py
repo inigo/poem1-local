@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from generate import BATCH_SIZE, batched, time_range
+from generate import BATCH_SIZE, MAX_ATTEMPTS, batched, time_range
 
 
 def test_time_range_single():
@@ -61,3 +61,7 @@ def test_three_hour_range_gives_nine_batches():
 
 def test_batch_size_constant_is_20():
     assert BATCH_SIZE == 20
+
+
+def test_max_attempts_constant_is_3():
+    assert MAX_ATTEMPTS == 3
