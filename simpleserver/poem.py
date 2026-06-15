@@ -22,7 +22,6 @@ from pathlib import Path
 import argparse
 import json
 import random
-import ssl
 import sys
 import urllib.request
 
@@ -132,10 +131,7 @@ def main():
     if active_tags:
         print(f"Active tags: {active_tags}")
 
-    server = HTTPServer(("0.0.0.0", 443), Handler)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
-    server.socket = context.wrap_socket(server.socket, server_side=True)
+    server = HTTPServer(("0.0.0.0", 8600), Handler)
     server.serve_forever()
 
 
