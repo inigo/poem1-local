@@ -90,6 +90,22 @@ def find_poems(time_str: Optional[str] = None, tags: Optional[list[str]] = None,
         return conn.execute(query, params).fetchall()
 
 
+def find_poems_matching_any_tag(time_str: str, tags: list[str],
+                                db_path: Path = DB_PATH) -> list[sqlite3.Row]:
+    """Return poems for time_str that have at least one tag in common with tags."""
+    placeholders = ",".join("?" * len(tags))
+    query = f"""
+        SELECT DISTINCT p.* FROM poems p
+        JOIN poem_tags pt ON pt.poem_id = p.id
+        JOIN tags t ON t.id = pt.tag_id
+        WHERE p.time_str = ? AND t.name IN ({placeholders})
+        ORDER BY p.id
+    """
+    params = [time_str] + [t.strip().lower() for t in tags]
+    with get_connection(db_path) as conn:
+        return conn.execute(query, params).fetchall()
+
+
 def mark_used(poem_id: int, date_used: str, db_path: Path = DB_PATH) -> None:
     with get_connection(db_path) as conn:
         conn.execute("UPDATE poems SET date_used = ? WHERE id = ?", (date_used, poem_id))
